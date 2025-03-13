@@ -1,0 +1,8 @@
+random_horizontal_flip:
+  prob: 0.5
+
+random_vertical_flip:
+  prob: 0.5
+
+
+

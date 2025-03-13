@@ -1,0 +1,31 @@
+# 引用默认配置
+defaults:
+  - default
+  - override model: new
+  - _self_  # 确保当前配置覆盖默认值
+
+optimizer:
+  lr: 0.00005
+
+training:
+  parameter:
+    batch_size: 64
+    epoch: 100
+  task:
+    type: weight_posture
+    loss:
+      _target_: src.core.loss.PWAPLoss
+
+  metrics:
+    regression:
+      - mae
+      - rmse
+      - r2
+      - mape
+    classification:
+      - accuracy
+      - f1
+
+experiment:
+  name: exp2
+  description: "通用训练框架测试"

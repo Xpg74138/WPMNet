@@ -1,0 +1,29 @@
+# 引用默认配置
+defaults:
+  - default
+  - _self_  # 确保当前配置覆盖默认值
+
+training:
+  parameter:
+    epochs: 1
+  task:
+    type: weight
+    loss:
+      _target_: src.core.loss.PWLoss
+
+  metrics:
+    regression:
+      - mae
+      - rmse
+      - r2
+      - mape
+
+scheduler:
+  _target_: none
+
+
+experiment:
+  name: exp1
+  description: "通用训练框架测试"
+
+

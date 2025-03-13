@@ -1,0 +1,30 @@
+defaults:
+  - model: convnext_Mydetect
+  - data: pig_weight
+  - optimizer: adamw
+  - scheduler: cosine
+  - augmentation: default
+  - training: default
+  - _self_
+
+training:
+  parameter:
+    epochs: 100
+
+# 可视化配置
+visualization:
+  log_images: true
+  log_model_graph: true
+  log_interval: 10  # 每多少批次记录一次
+  visualization_interval: 5  # 每多少轮次生成可视化结果
+  target_layer: null  # 设为null时将自动查找最后一个卷积层,也可指定具体层【model.3】
+
+experiment:
+  name: ${model.type}
+  run_name: ${model.type}
+  tags: ["baseline", "multitask"]
+  description: "通用训练框架测试"
+
+mlflow:
+  tracking_uri: "http://localhost:2000"
+  log_artifacts: true
