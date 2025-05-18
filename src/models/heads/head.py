@@ -20,24 +20,24 @@ class DecoupleHead(nn.Module):
     def __init__(self, ch=128, nc=3):
         super().__init__()
         self.nc = nc  # number of classes
-        self.merge = Conv(ch, 128, 1, 1,act=nn.GELU())
+        self.merge = Conv(ch, 768, 1, 1,act=nn.GELU())
 
         # 分类分支
         self.cls = nn.Sequential(
-            Conv(128, 128, 3, 1, 1, act=nn.ReLU()),
+            Conv(768, 768, 3, 1, 1, act=nn.ReLU()),
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.LayerNorm(128),
-            nn.Linear(128, 3)
+            nn.LayerNorm(768),
+            nn.Linear(768, 3)
         )
 
         # 回归分支
         self.reg = nn.Sequential(
-                    Conv(128, 128, 3, 1, 1, act=nn.ReLU()),
+                    Conv(768, 768, 3, 1, 1, act=nn.ReLU()),
                     nn.AdaptiveAvgPool2d(1),
                     nn.Flatten(),
-                    nn.LayerNorm(128),
-                    nn.Linear(128, 1)
+                    nn.LayerNorm(768),
+                    nn.Linear(768, 1)
         )
 
 
