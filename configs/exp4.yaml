@@ -1,20 +1,24 @@
 # 引用默认配置
 defaults:
   - default
-  - override model: new
+  - override data: pig_weight_truedepth
+  - override model: dual_convnext_decouplehead
   - _self_  # 确保当前配置覆盖默认值
 
 optimizer:
-  lr: 0.00005
+  lr: 0.0001
 
 training:
   parameter:
-    batch_size: 64
-    epoch: 100
+    batch_size: 128
+    epochs: 100
   task:
     type: weight_posture
     loss:
       _target_: src.core.loss.PWAPLoss
+
+visualization:
+  target_layer: builder.layers.25.conv
 
   metrics:
     regression:
@@ -27,5 +31,5 @@ training:
       - f1
 
 experiment:
-  name: exp2
+  name: exp4
   description: "通用训练框架测试"

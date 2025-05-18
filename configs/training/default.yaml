@@ -1,7 +1,7 @@
 parameter:
   epochs: 100
   batch_size: 256
-  num_workers: 8
+  num_workers: 10
   seed: 20
   device: cuda
   use_amp: true  # 是否使用自动混合精度

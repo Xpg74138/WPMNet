@@ -7,11 +7,11 @@ class_names:
 modality: [rgb,depth]
 
 train:
-  path: /media/xpg/13ecfb4d-71cb-47b8-bc77-f73b09f64929/xpg/Mytopic/MyDataset/Data_bbox_30000/labels/4posture/new_train.txt
+  path: /mnt/16c3c2a1-8fd2-4e6b-95ba-07a11683b744/data/700x700_mask/train.txt
   cache: ""
   augment: true
 val:
-  path: /media/xpg/13ecfb4d-71cb-47b8-bc77-f73b09f64929/xpg/Mytopic/MyDataset/Data_bbox_30000/labels/4posture/new_val.txt
+  path: /mnt/16c3c2a1-8fd2-4e6b-95ba-07a11683b744/data/700x700_mask/val.txt
   cache: ""
   augment: false
 test:

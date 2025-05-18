@@ -5,7 +5,7 @@ from pathlib import Path
 def run_experiment(exp_name: str):
     """运行单个实验配置（会自动继承并覆盖默认配置）"""
     # 直接使用配置文件路径覆盖
-    cmd = f"python train.py --config-path=configs --config-name={exp_name}"
+    cmd = f"torchrun --nproc_per_node=2 train.py --config-path=configs --config-name={exp_name}"
     print(f"\n开始运行实验: {exp_name}")
     
     process = subprocess.Popen(
@@ -41,7 +41,7 @@ def get_experiment_configs():
     # 获取所有yaml文件
     for config_file in experiment_dir.glob("*.yaml"):
         # 排除default.yaml和base.yaml
-        if config_file.stem not in ["default", "base"]:
+        if config_file.stem not in ["default", "base","test","exp3"]:
             experiments.append(config_file.stem)
     
     # 排序实验配置名

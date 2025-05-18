@@ -8,6 +8,10 @@ import thop
 from hydra.utils import instantiate
 from ..models import common_blocks,repeat_blocks,heads,multipleinput_blocks,func_blocks
 import math
+from colorama import Fore, Back, Style, init
+from thop import profile
+from ptflops import get_model_complexity_info
+init(autoreset=True)
 
 class ModelBuilder(nn.Module):
     """模块化模型构建器"""
@@ -142,7 +146,7 @@ class ModelBuilder(nn.Module):
 
     def _print_layer_info(self, module: nn.Module):
         """格式化打印层信息"""
-        print(f"{module.i:>3}{str(module.f):>18}{getattr(module, 'n', 1):>3}"
+        print(Fore.GREEN+f"{module.i:>3}{str(module.f):>18}{getattr(module, 'n', 1):>3}"
               f"{module.np:10.0f}  {module.type:<40}{str(module.args):<30}")
 
 class XModel(nn.Module):
@@ -163,9 +167,10 @@ class XModel(nn.Module):
     def _init_weights(self, weights_path: Optional[str] = None):
         """权重初始化"""
         if weights_path:
+            print(Fore.GREEN+f"Loading model weights from path {weights_path}")
             self.load_weights(weights_path)
         else:
-            print("Initializing model weights...")
+            print(Fore.GREEN+"Initializing model weights...")
             self.apply(self._kaiming_init)
             # 添加线性层初始化更合理
             self.apply(self._init_linear_layers)
@@ -204,13 +209,12 @@ class XModel(nn.Module):
     def load_weights(self, weights_path: str):
         """加载预训练权重"""
         try:
-            state_dict = torch.load(weights_path)
-            # 处理可能的键名前缀
-            state_dict = {k.replace('model.', ''): v for k, v in state_dict.items()}
-            self.load_state_dict(state_dict, strict=False)
+            checkpoint = torch.load(weights_path)
+            state_dict = checkpoint.get('model_state', checkpoint)
+            self.load_state_dict(state_dict, strict=True)
             mlflow.log_artifact(weights_path)  # 记录权重文件
         except Exception as e:
-            print(f"权重加载失败: {str(e)}")
+            print(Back.RED+f"权重加载失败: {str(e)}")
             print("使用随机初始化...")
             
     def forward(self, x: torch.Tensor) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -244,7 +248,7 @@ class XModel(nn.Module):
     def _profile_layer(self, module: nn.Module, x: torch.Tensor):
         """带元数据的性能分析"""
         flops = thop.profile(module, inputs=(x,), verbose=False)[0] / 1e9 * 2
-        print(f"{module.type} | FLOPs: {flops:.2f}G | Params: {module.np/1e6:.2f}M")
+        print(Back.GREEN+f"{module.type} | FLOPs: {flops:.2f}G | Params: {module.np/1e6:.2f}M")
 
     def _format_output(self, raw_output: Dict) -> Dict:
         """根据任务格式化输出（新增）"""
@@ -256,24 +260,18 @@ class XModel(nn.Module):
             formatted['classification'] = raw_output[:, 1:]
         return formatted
     
-    def info(self, verbose=False):
-        """模型信息统计"""
+    def log_info(self):
+        # Model basic information
         total_params = sum(m.np for m in self.model)
-        print(f"\n{'Type':<20} {'Params':<10} {'Input From':<15}")
-        print("-"*45)
-        for m in self.model:
-            print(f"{m.type:<20} {m.np/1e6:<10.2f}M {str(m.f):<15}")
-        print(f"\nTotal params: {total_params/1e6:.2f}M")
-
-    def _visualize_features(self, tensor: torch.Tensor, layer_idx: int):
-        """改进的特征可视化"""
-        if tensor.dim() == 4 and tensor.size(1) > 1:  # 仅可视化卷积特征
-            with torch.no_grad():
-                # 取第一个样本的通道均值
-                feature_map = tensor[0].mean(dim=0).cpu().numpy()
-                plt.figure(figsize=(8, 8))
-                plt.imshow(feature_map)
-                plt.title(f"Layer {layer_idx} Features")
-                plt.colorbar()
-                mlflow.log_figure(plt.gcf(), f"feature_maps/layer_{layer_idx}.png")
-                plt.close()
+        print(Fore.GREEN+f"\n{'-'*60}")
+        print(Fore.GREEN+f"{'Model Info':^60}")
+        print(Fore.GREEN+f"{'-'*60}")
+        print(Fore.GREEN+f"Total params: {total_params/1e6:.2f}M")
+        
+        # Device and Precision of calculation
+        print(Fore.GREEN+f"\n{'Device Info':^60}")
+        print(Fore.GREEN+f"{'-'*60}")
+        print(Fore.GREEN+f"Device: {next(self.parameters()).device}")
+        print(Fore.GREEN+f"Precision: {next(self.parameters()).dtype}")
+        
+        print(Fore.GREEN+f"{'-'*60}")

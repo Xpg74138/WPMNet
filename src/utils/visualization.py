@@ -10,7 +10,11 @@ from torchvision.transforms.functional import to_pil_image
 import pandas as pd
 from matplotlib.figure import Figure
 from typing import Dict, List, Tuple, Optional, Union
-
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
+import numpy as np
+from captum.attr import LayerGradCam
+from captum.attr import visualization as viz
 
 class ResultsVisualizer:
     """Visualization tool for model prediction results"""
@@ -139,6 +143,138 @@ class ResultsVisualizer:
         plt.close(fig)
         return fig
         
+
+
+    def visualize_grad_cam_multitask(self,
+                                 model: torch.nn.Module,
+                                 images: torch.Tensor,
+                                 target_layer: str = None,
+                                 target_task: str = "regression",
+                                 target_class: int = None):
+        """
+        Captum-based Grad-CAM for multi-task model
+        """
+        device = images.device
+        model = model.to(device).eval()
+        img = images[0:1].clone().requires_grad_()  # 只处理第一张
+
+        # 自动找最后的卷积层
+        if target_layer is None:
+            target_layer = self._find_task_last_conv(model, target_task)
+            if target_layer is None:
+                raise ValueError(f"No Conv2d layer found for {target_task} branch")
+
+        # 获取层对象
+        target_module = self._find_submodule_by_name(model, target_layer)
+
+        # Captum 的 forward 函数要求返回一个 tensor，我们包一层
+        def forward_func(x):
+            out = model(x)
+            return out[target_task]
+        
+                # 构造 Grad-CAM 对象
+        gradcam = LayerGradCam(forward_func, target_module)
+
+        # 得到 target 类别 index 或 regression 输出 index
+        if target_task == "regression":
+            target_index = None  # 输出 shape 是 (B, 1)
+        else:
+            outputs = model(img)
+            logits = outputs['classification'][0]
+            if target_class is None:
+                target_index = logits.argmax().item()
+            else:
+                target_index = target_class
+
+        # 计算 Grad-CAM
+        attr = gradcam.attribute(img, target=target_index,relu_attributions=True)  # shape: (1, C, H, W)
+        cam = attr[0].detach().cpu()
+
+        # 平均通道得到热力图
+        cam_map = cam.mean(dim=0).numpy()
+        cam_map = np.maximum(cam_map, 0)
+        cam_map /= (cam_map.max() + 1e-8)
+
+        # 原图处理为 numpy (H, W, C)
+        img_np = img[0].detach().cpu().numpy().transpose(1, 2, 0)
+        if img_np.shape[2] > 3:
+            img_np = img_np[:, :, :3]
+        img_np -= img_np.min()
+        img_np /= (img_np.max() + 1e-8)
+
+        # 插值 grad-cam 到原图大小
+        cam_resized = F.interpolate(
+            torch.tensor(cam_map[None, None, ...]), 
+            size=img_np.shape[:2], 
+            mode='bilinear',
+            align_corners=False
+        )[0, 0].numpy()
+
+        # 可视化
+        fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+        axes[0].imshow(img_np)
+        axes[0].axis('off')
+        axes[0].set_title("Original Image")
+
+        # 热力图叠加
+        heatmap = plt.get_cmap('jet')(cam_resized)[..., :3]
+        overlay = 0.5 * img_np + 0.5 * heatmap
+        axes[1].imshow(overlay)
+        axes[1].axis('off')
+        if target_task == "classification":
+            axes[1].set_title(f"Grad-CAM (class={target_index})")
+        else:
+            axes[1].set_title("Grad-CAM (regression)")
+
+        plt.tight_layout()
+        plt.close(fig)
+        return fig
+
+    def _find_task_last_conv(self, model, target_task: str):
+        """自动查找指定任务分支的最后一层卷积层"""
+        task_specific_layers = []
+        
+        # 遍历所有模块
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Conv2d):
+                # 根据任务类型过滤层
+                if target_task == "regression" and "weight_" in name:
+                    task_specific_layers.append(name)
+                elif target_task == "classification" and "cls_" in name:
+                    task_specific_layers.append(name)
+        
+        # 如果没有找到任务特定层，则返回全局最后一层卷积
+        if not task_specific_layers:
+            all_conv_layers = [name for name, module in model.named_modules()
+                            if isinstance(module, torch.nn.Conv2d)]
+            if all_conv_layers:
+                print(f"Warning: Using last conv layer of entire model for {target_task}")
+                return all_conv_layers[-1]
+            return None
+        
+        # 返回该任务分支的最后一层卷积
+        return task_specific_layers[-1]
+
+    def _find_submodule_by_name(self, model, layer_name: str):
+        """与前面类似，用于查找子模块"""
+        parts = layer_name.split('.')
+        current_module = model
+        try:
+            for part in parts:
+                if part.isdigit():
+                    current_module = current_module[int(part)]
+                else:
+                    current_module = getattr(current_module, part)
+            return current_module
+        except (AttributeError, IndexError):
+            pass
+        
+        # fallback
+        for name, module in model.named_modules():
+            if name == layer_name:
+                return module
+        raise ValueError(f"Layer not found: {layer_name}")
+
     def visualize_feature_maps(self, 
                             model: torch.nn.Module, 
                             images: torch.Tensor, 
@@ -308,4 +444,27 @@ class ResultsVisualizer:
                 plt.close(fig_feat)
             except Exception as e:
                 print(f"Feature visualization failed: {str(e)}")
+            try:
+                fig_reg = self.visualize_grad_cam_multitask(
+                    model=model,
+                    images=sample_images,
+                    target_layer=target_layer,   # 或你想观察的层
+                    target_task="regression"      # 或 "classification"
+                )
+                mlflow.log_figure(fig_reg, f"visualization/Grad-CAM_regression_epoch_{epoch}.png")
+                plt.close(fig_reg)
+            except Exception as e:
+                print(f"Feature Grad-CAM visualization failed: {str(e)}")
+            try:
+                fig_cls = self.visualize_grad_cam_multitask(
+                    model=model,
+                    images=sample_images,
+                    target_layer=target_layer,   # 或你想观察的层
+                    target_task="classification"      # 或 "classification"
+                )
+                mlflow.log_figure(fig_cls, f"visualization/Grad-CAM_classification_epoch_{epoch}.png")
+                plt.close(fig_cls)
+            except Exception as e:
+                print(f"Feature Grad-CAM visualization failed: {str(e)}")
+ 
  

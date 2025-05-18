@@ -17,7 +17,7 @@ visualization:
   log_model_graph: true
   log_interval: 10  # 每多少批次记录一次
   visualization_interval: 5  # 每多少轮次生成可视化结果
-  target_layer: null  # 设为null时将自动查找最后一个卷积层,也可指定具体层【model.3】
+  target_layer:   # 设为不填写时将自动查找最后一个卷积层,也可指定具体层【model.3】
 
 experiment:
   name: ${model.type}

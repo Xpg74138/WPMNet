@@ -97,7 +97,7 @@ class RegressionMetrics(nn.Module):
         """R² = 1 - SS_res / SS_tot"""
         ss_res = torch.sum((y_true - y_pred)**2)
         ss_tot = torch.sum((y_true - torch.mean(y_true))**2)
-        print(f"SS_res: {ss_res.item()}, SS_tot: {ss_tot.item()}")
+        #print(f"SS_res: {ss_res.item()}, SS_tot: {ss_tot.item()}")
 
         return 1 - self._safe_divide(ss_res, ss_tot)
 

@@ -42,7 +42,8 @@ Model:
       [15, 1, Upsample, [None, 2, "nearest"]],
       [23, 1, Conv, [192, 3, 2]],
       [[-1, 24, 19], 1, Concat, [1]],
-      [-1, 1, CoupleHead,[]], # Detect(P3, P4, P5)
+      
+      [-1, 1, CoupleHead,[]], # Detect(P3, P4, P5)27
     ]
 
   weights: ""

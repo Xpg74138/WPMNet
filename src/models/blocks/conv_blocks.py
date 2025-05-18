@@ -343,7 +343,7 @@ class ConvNextBlock(nn.Module):
         x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
         if self.gamma is not None:
             x = self.gamma * x
-        x = input + x
+        x += input
         return x
 
 class ConvNextStem(Conv):
@@ -360,3 +360,109 @@ class Downsample(nn.Module):
         x=self.norm(x)
         x=self.conv(x)
         return x
+    
+class ResNetStem(nn.Module):
+    """ResNet风格的stem模块（包含初始卷积+池化）"""
+    def __init__(self, c1=3, c2=64, k=7, s=2, p=None, pool=True):
+        """
+        Args:
+            c1: 输入通道数 (默认3对应RGB图像)
+            c2: 输出通道数 (默认64)
+            k: 卷积核大小 (默认7)
+            s: 卷积步长 (默认2)
+            p: 卷积填充 (自动计算)
+            pool: 是否添加最大池化层 (默认True)
+        """
+        super().__init__()
+        # 主卷积层 (保持与ResNet原始实现一致)
+        self.conv = Conv(c1, c2, k=k, s=s, p=autopad(k, p), act=True, norm=True)
+        
+        # 池化层 (当需要降采样时启用)
+        self.pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1) if pool else nn.Identity()
+
+    def forward(self, x):
+        x = self.conv(x)  # 示例：224x224 -> 112x112 (当k=7,s=2,p=3)
+        return self.pool(x)  # 示例：112x112 -> 56x56 (当pool=True)
+
+class ResNetBlock(nn.Module):
+    """ResNet basic block (a.k.a BasicBlock) 
+    Ref: Deep Residual Learning for Image Recognition (https://arxiv.org/abs/1512.03385)
+    
+    Args:
+        c1 (int): input channels
+        c2 (int): output channels
+        s (int): convolution stride (for downsampling)
+        expansion (int): expansion ratio (1 for BasicBlock, 4 for BottleneckBlock)
+        shortcut (bool): whether to use shortcut connection
+        groups (int): number of grouped convolutions
+        base_width (float): width multiplier factor
+    """
+    expansion = 1  # BasicBlock的扩展系数
+    
+    def __init__(self, c1, c2, s=1, shortcut=True, groups=1, base_width=64.0):
+        super().__init__()
+        width = int(c2 * (base_width / 64.)) * groups
+        
+        # 主路径
+        self.conv1 = Conv(c1, width, k=3, s=s, p=1, g=groups)
+        self.conv2 = Conv(width, c2, k=3, s=1, p=1, g=groups, act=False)
+        
+        # 捷径路径
+        self.shortcut = nn.Sequential()
+        if s != 1 or c1 != c2 * self.expansion:
+            if shortcut:  # 需要调整维度时使用1x1卷积
+                self.shortcut = Conv(c1, c2, k=1, s=s, act=False)
+            else:         # 无shortcut时保持通道一致
+                self.shortcut = nn.Identity()
+        
+        # 最终激活函数 (与原始实现一致)
+        self.act = nn.ReLU() if self.conv1.act is nn.Identity() else self.conv1.act
+        
+    def forward(self, x):
+        # 主路径
+        identity = self.shortcut(x)
+        x = self.conv1(x)
+        x = self.conv2(x)
+        
+        # 残差连接 + 激活
+        return self.act(x + identity)
+
+class ResNetBottleneck(ResNetBlock):
+    """Bottleneck Block for ResNet (expansion=4)"""
+    expansion = 4
+    
+    def __init__(self, c1, c2, s=1, shortcut=True, groups=1, base_width=64.0):
+        super().__init__(c1, c2, s, shortcut, groups, base_width)
+        width = int(c2 * (base_width / 64.)) * groups
+        
+        # 重新定义主路径
+        self.conv1 = Conv(c1, width, k=1, s=1)
+        self.conv2 = Conv(width, width, k=3, s=s, p=1, g=groups)
+        self.conv3 = Conv(width, c2 * self.expansion, k=1, act=False)
+        
+        # 调整shortcut路径
+        if s != 1 or c1 != c2 * self.expansion:
+            self.shortcut = Conv(c1, c2 * self.expansion, k=1, s=s, act=False)
+
+class ResNetStage(nn.Module):
+    """ResNet 的一个阶段（包含多个BasicBlock）"""
+    def __init__(self, c1, c2, num_blocks, stride=1, groups=1, base_width=64.0):
+        """
+        Args:
+            c1: 输入通道数
+            c2: 基础通道数（实际输出通道数 = c2 * block.expansion）
+            num_blocks: 当前阶段包含的块数量
+            stride: 第一个块的步长（用于下采样）
+        """
+        super().__init__()
+        # 第一个块负责下采样
+        blocks = [ResNetBlock(c1, c2, s=stride, groups=groups, base_width=base_width)]
+        
+        # 后续块保持分辨率
+        for _ in range(1, num_blocks):
+            blocks.append(ResNetBlock(c2 * ResNetBlock.expansion, c2, s=1, groups=groups, base_width=base_width))
+        
+        self.blocks = nn.Sequential(*blocks)
+
+    def forward(self, x):
+        return self.blocks(x)
