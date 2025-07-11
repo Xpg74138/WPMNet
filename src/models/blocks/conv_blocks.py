@@ -274,6 +274,19 @@ class Concat(nn.Module):
     def forward(self, x):
         return torch.cat(x, self.d)
     
+class Concat2(nn.Module):
+    # Concatenate a list of tensors along dimension
+    def __init__(self, dimension=1):
+        super().__init__()
+        self.d = dimension
+
+    def forward(self, x):
+        rgb=x[0][0]
+        depth=x[0][1]
+        list=[rgb,depth]
+        return torch.cat(list, self.d)
+    
+
 class LayerNorm(nn.Module):
     r""" LayerNorm that supports two data formats: channels_last (default) or channels_first.
     The ordering of the dimensions in the inputs. channels_last corresponds to inputs with
@@ -360,7 +373,8 @@ class Downsample(nn.Module):
         x=self.norm(x)
         x=self.conv(x)
         return x
-    
+
+#Resnet相关模块
 class ResNetStem(nn.Module):
     """ResNet风格的stem模块（包含初始卷积+池化）"""
     def __init__(self, c1=3, c2=64, k=7, s=2, p=None, pool=True):
@@ -375,7 +389,7 @@ class ResNetStem(nn.Module):
         """
         super().__init__()
         # 主卷积层 (保持与ResNet原始实现一致)
-        self.conv = Conv(c1, c2, k=k, s=s, p=autopad(k, p), act=True, norm=True)
+        self.conv = Conv(c1, c2, k=k, s=s, p=autopad(k, p), act=nn.ReLU(), norm=True)
         
         # 池化层 (当需要降采样时启用)
         self.pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1) if pool else nn.Identity()
@@ -384,85 +398,61 @@ class ResNetStem(nn.Module):
         x = self.conv(x)  # 示例：224x224 -> 112x112 (当k=7,s=2,p=3)
         return self.pool(x)  # 示例：112x112 -> 56x56 (当pool=True)
 
-class ResNetBlock(nn.Module):
-    """ResNet basic block (a.k.a BasicBlock) 
-    Ref: Deep Residual Learning for Image Recognition (https://arxiv.org/abs/1512.03385)
-    
-    Args:
-        c1 (int): input channels
-        c2 (int): output channels
-        s (int): convolution stride (for downsampling)
-        expansion (int): expansion ratio (1 for BasicBlock, 4 for BottleneckBlock)
-        shortcut (bool): whether to use shortcut connection
-        groups (int): number of grouped convolutions
-        base_width (float): width multiplier factor
-    """
-    expansion = 1  # BasicBlock的扩展系数
-    
-    def __init__(self, c1, c2, s=1, shortcut=True, groups=1, base_width=64.0):
-        super().__init__()
-        width = int(c2 * (base_width / 64.)) * groups
-        
-        # 主路径
-        self.conv1 = Conv(c1, width, k=3, s=s, p=1, g=groups)
-        self.conv2 = Conv(width, c2, k=3, s=1, p=1, g=groups, act=False)
-        
-        # 捷径路径
-        self.shortcut = nn.Sequential()
-        if s != 1 or c1 != c2 * self.expansion:
-            if shortcut:  # 需要调整维度时使用1x1卷积
-                self.shortcut = Conv(c1, c2, k=1, s=s, act=False)
-            else:         # 无shortcut时保持通道一致
-                self.shortcut = nn.Identity()
-        
-        # 最终激活函数 (与原始实现一致)
-        self.act = nn.ReLU() if self.conv1.act is nn.Identity() else self.conv1.act
-        
-    def forward(self, x):
-        # 主路径
-        identity = self.shortcut(x)
-        x = self.conv1(x)
-        x = self.conv2(x)
-        
-        # 残差连接 + 激活
-        return self.act(x + identity)
-
-class ResNetBottleneck(ResNetBlock):
-    """Bottleneck Block for ResNet (expansion=4)"""
+class ResNetBottleneckDown(nn.Module):
+    """ResNet Bottleneck block with downsampling (stride=2 or c1≠c2*4)"""
     expansion = 4
-    
-    def __init__(self, c1, c2, s=1, shortcut=True, groups=1, base_width=64.0):
-        super().__init__(c1, c2, s, shortcut, groups, base_width)
-        width = int(c2 * (base_width / 64.)) * groups
-        
-        # 重新定义主路径
-        self.conv1 = Conv(c1, width, k=1, s=1)
-        self.conv2 = Conv(width, width, k=3, s=s, p=1, g=groups)
-        self.conv3 = Conv(width, c2 * self.expansion, k=1, act=False)
-        
-        # 调整shortcut路径
-        if s != 1 or c1 != c2 * self.expansion:
-            self.shortcut = Conv(c1, c2 * self.expansion, k=1, s=s, act=False)
 
-class ResNetStage(nn.Module):
-    """ResNet 的一个阶段（包含多个BasicBlock）"""
-    def __init__(self, c1, c2, num_blocks, stride=1, groups=1, base_width=64.0):
-        """
-        Args:
-            c1: 输入通道数
-            c2: 基础通道数（实际输出通道数 = c2 * block.expansion）
-            num_blocks: 当前阶段包含的块数量
-            stride: 第一个块的步长（用于下采样）
-        """
+    def __init__(self, c1, c2, s=2):  # 默认s=2用于下采样
         super().__init__()
-        # 第一个块负责下采样
-        blocks = [ResNetBlock(c1, c2, s=stride, groups=groups, base_width=base_width)]
-        
-        # 后续块保持分辨率
-        for _ in range(1, num_blocks):
-            blocks.append(ResNetBlock(c2 * ResNetBlock.expansion, c2, s=1, groups=groups, base_width=base_width))
-        
-        self.blocks = nn.Sequential(*blocks)
+        self.conv1 = Conv(c1, c2, 1, 1, act=nn.ReLU(), norm=True)                  # 1x1, stride=1
+        self.conv2 = Conv(c2, c2, 3, s, 1, act=nn.ReLU(), norm=True)               # 3x3, stride=s
+        self.conv3 = Conv(c2, c2, 1, 1, act=False, norm=True)  # 1x1, 输出通道扩展
+        self.shortcut = Conv(c1, c2, 1, s, act=False, norm=True)  # 1x1, stride=s
+        self.act = nn.ReLU()
 
     def forward(self, x):
-        return self.blocks(x)
+        identity = self.shortcut(x)
+        out = self.conv1(x)
+        out = self.conv2(out)
+        out = self.conv3(out)
+        return self.act(out + identity)
+
+class ResNetBottleneck(nn.Module):
+    """ResNet Bottleneck block without downsampling (stride=1, c1 == c2 * 4)"""
+    expansion = 4
+
+    def __init__(self, c1,c2):  
+        super().__init__()
+
+        self.conv1 = Conv(c1, c2//4, 1, 1, act=nn.ReLU(), norm=True)            # 降维
+        self.conv2 = Conv(c2//4, c2//4, 3, 1, 1, act=nn.ReLU(), norm=True)         # 特征处理
+        self.conv3 = Conv(c2//4, c2, 1, 1, act=False,norm=True) # 升维，恢复通道
+        self.shortcut = nn.Identity()
+        self.act = nn.ReLU()
+
+    def forward(self, x):
+        identity = x
+        out = self.conv1(x)
+        out = self.conv2(out)
+        out = self.conv3(out)
+        return self.act(out + identity)
+
+
+#VGG相关模块
+class VGGBlock(nn.Module):
+    """单层 VGG 卷积块（包含Conv + BN + ReLU）"""
+    def __init__(self, c1, c2, k=3, s=1, p=1):
+        super().__init__()
+        self.conv = Conv(c1, c2, k=k, s=s, p=p, act=nn.ReLU(), norm=True)
+
+    def forward(self, x):
+        return self.conv(x)
+
+class VGGMaxPoolBlock(nn.Module):
+    """多个卷积 + MaxPool 组合"""
+    def __init__(self, c1, c2):
+        super().__init__()
+        self.downsample=nn.MaxPool2d(kernel_size=2, stride=2)
+
+    def forward(self, x):
+        return self.downsample(x)

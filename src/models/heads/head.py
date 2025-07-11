@@ -15,6 +15,30 @@ class Posture_network(nn.Module):
         out=self.blocks(out)
         return out
 
+# 单纯的体重回归头
+class SWRHead(nn.Module):
+    def __init__(self, ch=128, nc=3):
+        super().__init__()
+        self.nc = nc  # number of classes
+        self.merge = Conv(ch, 768, 1, 1,act=nn.GELU())
+
+        # 回归分支
+        self.reg = nn.Sequential(
+                    Conv(768, 768, 3, 1, 1, act=nn.ReLU()),
+                    nn.AdaptiveAvgPool2d(1),
+                    nn.Flatten(),
+                    nn.LayerNorm(768),
+                    nn.Linear(768, 1)
+        )
+
+
+    def forward(self, x):
+        x = self.merge(x)
+        reg_out = self.reg(x)  # [B, 1]
+        # reg_out = torch.sigmoid(reg_out)
+
+        return torch.cat([reg_out], 1)  # 把分类和回归结果按channel维度，即dim=1拼接
+
 #分开分类和体重回归，可以更快收敛
 class DecoupleHead(nn.Module):
     def __init__(self, ch=128, nc=3):
@@ -46,99 +70,50 @@ class DecoupleHead(nn.Module):
 
         cls_out = self.cls(x)  # [B, nc]
         reg_out = self.reg(x)  # [B, 1]
-        reg_out = torch.sigmoid(reg_out)
+        # reg_out = torch.sigmoid(reg_out)
 
         return torch.cat([cls_out,reg_out], 1)  # 把分类和回归结果按channel维度，即dim=1拼接
 
-# class DecoupleHead(nn.Module):
-#     def __init__(self, ch=768, nc=3):
-#         super().__init__()
-#         self.nc = nc  # number of classes
-#         self.merge = Conv(ch, 768, 1, 1,act=nn.GELU())
-#         self.cls_convs1 = Conv(768, 768, 3, 1, 1,act=nn.GELU())
-#         self.weight_convs1 = Conv(768, 768, 3, 1, 1,act=nn.GELU())
-#         self.cls_norm=nn.LayerNorm(768, eps=1e-6)
-#         self.weight_norm=nn.LayerNorm(768, eps=1e-6)
-#         self.cls_preds = nn.Linear(768, 3, 1)
-#         self.weight_preds = nn.Linear(768, 1 , 1)
-
-#     def forward(self, x):
-#         x = self.merge(x)
-#         x1 = self.cls_convs1(x)
-#         x1=self.cls_norm(x1.mean([-2,-1]))
-#         x1 = self.cls_preds(x1)
-
-#         x2 = self.weight_convs1(x)
-#         x2=self.weight_norm(x2.mean([-2,-1]))
-#         x2 = self.weight_preds(x2)
-#         return torch.cat([x1,x2], 1)  # 把分类和回归结果按channel维度，即dim=1拼接
 
 #结合分类和体重回归，理论是姿态会影响体重预测，但是训练会更难
 class CoupleHead(nn.Module):
-    def __init__(self, ch,nc=3):
+    def __init__(self, _,ch=1344,nc=3):
         super().__init__()
         self.nc = nc
-        # 姿态分类
-        self.head = nn.Linear(1344, 3)
         self.flatten = nn.Flatten()
-        # 体重回归
-        self.fc1 = nn.Linear(1344, 1)
-        self.act = nn.GELU()
-        self.mynorm1 = nn.LayerNorm(1344, eps=1e-6)
-        self.mynorm2 = nn.LayerNorm(1344, eps=1e-6)
-        self.addednetwork = Posture_network(1344)
+        # 特征提取
+        self.feature_extractor = Posture_network(ch)
+        # 分类分支
+        self.cls = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.LayerNorm(ch, eps=1e-6),
+            nn.GELU(),
+            nn.Linear(ch, nc)
+        )
+
+        # 回归分支（使用 features + original_input）
+        self.reg = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.LayerNorm(ch, eps=1e-6),
+            nn.GELU(),
+            nn.Linear(ch, 1)
+        )
 
     def forward(self, x):
-        x=x
-        x_=x
-        # 获取姿态分类网络的输出和特征
-        mid = self.addednetwork(x)
-        x = self.mynorm1(mid.mean([-2, -1]))
-        x = self.head(x)
-        # 体重回归网络
-        y = mid + x_
-        y = self.mynorm2(y.mean([-2, -1]))
-        y = self.fc1(y)
-        return torch.cat([x,y], 1)
+        original_input = x
+        features = self.feature_extractor(x)
 
-# class CoupleHead(nn.Module):
-#     def __init__(self, ch=1344,nc=3):
-#         super().__init__()
-#         self.nc = nc
-#         self.flatten = nn.Flatten()
-#         # 特征提取
-#         self.feature_extractor = Posture_network(1344)
-#         # 分类分支
-#         self.cls = nn.Sequential(
-#             nn.AdaptiveAvgPool2d(1),
-#             nn.Flatten(),
-#             nn.LayerNorm(ch, eps=1e-6),
-#             nn.GELU(),
-#             nn.Linear(ch, nc)
-#         )
+        # 分类分支
+        cls_out = self.cls(features)
 
-#         # 回归分支（使用 features + original_input）
-#         self.reg = nn.Sequential(
-#             nn.AdaptiveAvgPool2d(1),
-#             nn.Flatten(),
-#             nn.LayerNorm(ch, eps=1e-6),
-#             nn.GELU(),
-#             nn.Linear(ch, 1)
-#         )
+        # 回归分支
+        reg_input = features + original_input
+        reg_out = self.reg(reg_input)
+        # reg_out = torch.sigmoid(reg_out)
 
-#     def forward(self, x):
-#         original_input = x
-#         features = self.feature_extractor(x)
-
-#         # 分类分支
-#         cls_out = self.cls(features)
-
-#         # 回归分支
-#         reg_input = features + original_input
-#         reg_out = self.reg(reg_input)
-#         reg_out = torch.sigmoid(reg_out)
-
-#         return torch.cat([cls_out,reg_out], 1)
+        return torch.cat([cls_out,reg_out], 1)
 
 
 

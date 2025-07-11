@@ -1,0 +1,36 @@
+_target_: src.core.builder.XModel
+task: ${training.task.type}
+type: weight_posture
+
+Model:
+  input_channel: 4
+  Backbone:
+    # [from, number, module, args]
+    [ 
+      [-1, 1, ResNetStem_dual, [64, 7, 2]],                  # Stage 0
+
+      [-1, 1, ResNetBottleneckDown_dual, [ 256, 1]],       # Stage 1 - BTN K1, no downsampling
+      [-1, 2, ResNetBottleneck_dual, [256]],                  # BTN K2 ×2
+      [-1, 1, FeatureRectifyModule, [256]],                
+
+
+      [-1, 1, ResNetBottleneckDown_dual, [ 512, 2]],     # Stage 2 - BTN K1, downsample
+      [-1, 3, ResNetBottleneck_dual, [512]],                 # BTN K2 ×3
+      [-1, 1, FeatureRectifyModule, [512]],               # 6
+
+      [-1, 1, ResNetBottleneckDown_dual, [ 1024, 2]],     # Stage 3 - BTN K1, downsample
+      [-1, 5, ResNetBottleneck_dual, [1024]],                 # BTN K2 ×5
+      [-1, 1, FeatureRectifyModule, [1024]],              # 9
+
+      [-1, 1, ResNetBottleneckDown_dual, [ 2048, 2]],    # Stage 4 - BTN K1, downsample
+      [-1, 2, ResNetBottleneck_dual, [2048]],                  # BTN K2 ×2
+      [-1, 1, FeatureRectifyModule, [2048]],              #12
+    ]
+
+  Head:
+    [
+      [[12, 9, 6], 1, AttentionFusion, [512, 128]],  # 融合模块
+      [-1, 1, DecoupleHead, [384]],
+    ]
+
+  weights: ""

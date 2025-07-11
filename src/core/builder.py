@@ -170,10 +170,17 @@ class XModel(nn.Module):
             print(Fore.GREEN+f"Loading model weights from path {weights_path}")
             self.load_weights(weights_path)
         else:
-            print(Fore.GREEN+"Initializing model weights...")
-            self.apply(self._kaiming_init)
-            # 添加线性层初始化更合理
-            self.apply(self._init_linear_layers)
+            for i,block in enumerate(self.model):
+                if hasattr(block, '_init_weights'):
+                    print(f"[Block {i}] Using block's own _init_weights: {block.__class__.__name__}")
+                else:
+                    print(f"[Block {i}] No _init_weights, initializing sublayers of {block.__class__.__name__}")
+                    for name, layer in block.named_modules():
+                        if layer is block:  # 跳过自身，只对其子模块初始化
+                            continue
+                        else:
+                            self._kaiming_init(layer)  # 使用默认的 kaiming 初始化
+                            self._init_linear_layers(layer)
             
     def _kaiming_init(self, m: nn.Module):
         """改进的初始化策略"""

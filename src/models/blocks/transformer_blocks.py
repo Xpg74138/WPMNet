@@ -35,6 +35,39 @@ def window_reverse(windows, window_size, H, W):
     x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
     return x
 
+def window_process(x, shift_size, window_size):
+    """
+    Perform cyclic shift and window partition.
+    Args:
+        x: (B, H, W, C)
+        shift_size: shift size (int)
+        window_size: window size (int)
+    Returns:
+        x_windows: (num_windows * B, window_size, window_size, C)
+    """
+    if shift_size > 0:
+        shifted_x = torch.roll(x, shifts=(-shift_size, -shift_size), dims=(1, 2))
+    else:
+        shifted_x = x
+    x_windows = window_partition(shifted_x, window_size)
+    return x_windows
+
+def window_process_reverse(x_windows, shift_size, window_size, H, W):
+    """
+    Reverse window process.
+    Args:
+        x_windows: (num_windows * B, window_size, window_size, C)
+        shift_size: shift size (int)
+        window_size: window size (int)
+        H, W: original height and width
+    Returns:
+        x: (B, H, W, C)
+    """
+    x = window_reverse(x_windows, window_size, H, W)
+    if shift_size > 0:
+        x = torch.roll(x, shifts=(shift_size, shift_size), dims=(1, 2))
+    return x
+
 class WindowAttention(nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.
@@ -170,7 +203,7 @@ class SwinTransformerBlock(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
+    def __init__(self, dim,_, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,
                  fused_window_process=False):
@@ -239,7 +272,7 @@ class SwinTransformerBlock(nn.Module):
                 # partition windows
                 x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
             else:
-                x_windows = WindowProcess.apply(x, B, H, W, C, -self.shift_size, self.window_size)
+                x_windows = window_process(x, self.shift_size, self.window_size)
         else:
             shifted_x = x
             # partition windows
@@ -259,7 +292,7 @@ class SwinTransformerBlock(nn.Module):
                 shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
                 x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
             else:
-                x = WindowProcessReverse.apply(attn_windows, B, H, W, C, self.shift_size, self.window_size)
+                x = window_process_reverse(attn_windows, self.shift_size, self.window_size, H, W)
         else:
             shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
             x = shifted_x
@@ -298,7 +331,7 @@ class PatchMerging(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm):
+    def __init__(self, dim,_, input_resolution, norm_layer=nn.LayerNorm):
         super().__init__()
         self.input_resolution = input_resolution
         self.dim = dim
@@ -405,7 +438,7 @@ class BasicLayer(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, dim, input_resolution, depth, num_heads,drop_path,  downsample,window_size=7,
+    def __init__(self, dim, input_resolution, depth, num_heads,drop_path,downsample,window_size=7,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                   norm_layer=nn.LayerNorm, use_checkpoint=False,
                  fused_window_process=False):
@@ -456,3 +489,15 @@ class BasicLayer(nn.Module):
         if self.downsample is not None:
             flops += self.downsample.flops()
         return flops
+    
+
+class ReshapeToNCHW(nn.Module):
+    def __init__(self, c1,c2,H, W):
+        super().__init__()
+        self.H = H
+        self.W = W
+
+    def forward(self, x):
+        B, N, C = x.shape
+        assert N == self.H * self.W, f"Expected N={self.H}*{self.W}, but got {N}"
+        return x.view(B, self.H, self.W, C).permute(0, 3, 1, 2).contiguous()

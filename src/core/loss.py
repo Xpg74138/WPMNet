@@ -27,7 +27,7 @@ class PWLoss(nn.Module):
 
 
         # 计算权重损失（使用predictions的第一列）
-        lregression = self.mse(regression_pred, regression[:,0]).unsqueeze(0)
+        lregression = self.mse(regression_pred, regression[:,0:]).unsqueeze(0)
 
         total_loss=lregression
 
@@ -50,7 +50,7 @@ class PWAPLoss(nn.Module):
         # 初始化MSE损失函数（不需要参数）
         self.regressLoss = nn.MSELoss().to(device)
         #self.regressLoss=LogCoshError().to(device)
-        self.clsLoss = nn.CrossEntropyLoss().to(device)
+        self.clsLoss = nn.CrossEntropyLoss(label_smoothing=0.1).to(device)
         # 可以在此添加其他需要学习的参数
         # 例如：self.weight = nn.Parameter(torch.tensor(1.0))
         
@@ -83,7 +83,7 @@ class PWAPLoss(nn.Module):
         lclassification = self.clsLoss(classification_pred, classification).unsqueeze(0)
         
         # 合并损失项
-        total_loss = lclassification + lregression
+        total_loss = 0.6*lclassification + lregression
         
         # 返回总损失和各损失分量（自动转移到CPU）
         return total_loss, torch.cat((
@@ -109,7 +109,7 @@ class PWAPLoss_weighting(nn.Module):
         super().__init__()
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.regressLoss = nn.MSELoss().to(device)
-        self.clsLoss = nn.CrossEntropyLoss().to(device)
+        self.clsLoss = nn.CrossEntropyLoss(label_smoothing=0.1).to(device)
 
         # 添加可学习的 log(σ^2)，初始设为0
         self.log_var_reg = nn.Parameter(torch.tensor(0.0))  # 回归损失的 log-variance

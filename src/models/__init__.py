@@ -39,6 +39,19 @@ common_blocks = {
     "dim_trans_reverse":dim_trans_reverse,
     "FFl":FFl,
     "SwinTransformerBlock_dual_MY":SwinTransformerBlock_dual_MY,
+    "ResNetStem":ResNetStem,
+    "ResNetBottleneck":ResNetBottleneck,
+    "ResNetBottleneckDown":ResNetBottleneckDown,
+    "VGGBlock":VGGBlock,
+    "VGGMaxPoolBlock":VGGMaxPoolBlock,
+    "BasicLayer":BasicLayer,
+    "PatchEmbed" :PatchEmbed,
+    "SwinTransformerBlock":SwinTransformerBlock,
+    "PatchMerging": PatchMerging,
+    "ReshapeToNCHW": ReshapeToNCHW,
+    "ResNetStem_dual":ResNetStem_dual,
+    "ResNetBottleneckDown_dual":ResNetBottleneckDown_dual,
+    "ResNetBottleneck_dual":ResNetBottleneck_dual,
 
 }
 # internal repeat
@@ -52,7 +65,10 @@ repeat_blocks={
 }
 
 multipleinput_blocks={
-    "Concat":Concat
+    "Concat":Concat,
+    "Concat2":Concat2,
+    "AttentionFusion":AttentionFusion,
+    "SelfAttentionFusion":SelfAttentionFusion
 }
 
 # 创建一个 head 模块的字典
@@ -60,5 +76,6 @@ heads = {
     "DecoupleHead": DecoupleHead,
     "CoupleHead": CoupleHead,
     "MY_Detect":MY_Weight_Regression_Head,
+    "SWRHead":SWRHead,
 }
 

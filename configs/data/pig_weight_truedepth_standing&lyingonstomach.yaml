@@ -1,0 +1,39 @@
+_target_: src.core.builder.build_dataset
+img_size: 224
+class_names:
+  - standing
+  - lyingonstomach
+  - lyingonside
+modality: [rgb,depth]
+
+train:
+  path: /mnt/16c3c2a1-8fd2-4e6b-95ba-07a11683b744/data/700x700/train_standing&lyingonstomach.txt
+  cache: ""
+  augment: true
+val:
+  path: /mnt/16c3c2a1-8fd2-4e6b-95ba-07a11683b744/data/700x700/val_standing&lyingonstomach.txt
+  cache: ""
+  augment: false
+test:
+  path: /mnt/16c3c2a1-8fd2-4e6b-95ba-07a11683b744/data/700x700/test_standing&lyingonstomach.txt
+  cache: ""
+  augment: false
+
+train_loader:
+  _target_: torch.utils.data.DataLoader
+  batch_size: ${training.parameter.batch_size}
+  shuffle: true
+  num_workers: ${training.parameter.num_workers}
+  
+val_loader:
+  _target_: torch.utils.data.DataLoader
+  batch_size: ${training.parameter.batch_size}
+  shuffle: false
+  num_workers: ${training.parameter.num_workers}
+
+test_loader:
+  _target_: torch.utils.data.DataLoader
+  batch_size: ${training.parameter.batch_size}
+  shuffle: false
+  num_workers: ${training.parameter.num_workers}
+

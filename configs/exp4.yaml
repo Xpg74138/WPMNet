@@ -2,20 +2,20 @@
 defaults:
   - default
   - override data: pig_weight_truedepth
-  - override model: dual_convnext_decouplehead
+  - override model: Swin-transformer_SWRHead
   - _self_  # 确保当前配置覆盖默认值
 
 optimizer:
-  lr: 0.0001
+  lr: 0.0004
 
 training:
   parameter:
-    batch_size: 128
+    batch_size: 256
     epochs: 100
   task:
-    type: weight_posture
+    type: weight
     loss:
-      _target_: src.core.loss.PWAPLoss
+      _target_: src.core.loss.PWLoss
 
 visualization:
   target_layer: builder.layers.25.conv
@@ -26,10 +26,11 @@ visualization:
       - rmse
       - r2
       - mape
-    classification:
-      - accuracy
-      - f1
+
+warmup_iters: 5
+warmup_start_factor: 0.01   # 从 base_lr * 0.01 开始
 
 experiment:
-  name: exp4
-  description: "通用训练框架测试"
+  name: weightexp
+  run_name: exp4
+  description: 实验4

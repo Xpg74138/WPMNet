@@ -1,0 +1,39 @@
+# 引用默认配置
+defaults:
+  - default
+  - override data: pig_weight_truedepth
+  - override model: Resnet50_couplehead
+  - _self_  # 确保当前配置覆盖默认值
+
+optimizer:
+  lr: 0.0001
+
+training:
+  parameter:
+    batch_size: 256
+    epochs: 100
+  task:
+    type: weight_posture
+    loss:
+      _target_: src.core.loss.PWAPLoss
+
+visualization:
+  target_layer: builder.layers.25.conv
+
+  metrics:
+    regression:
+      - mae
+      - rmse
+      - r2
+      - mape
+    classification:
+      - accuracy
+      - f1
+
+warmup_iters: 3
+warmup_start_factor: 0.01   # 从 base_lr * 0.01 开始
+
+experiment:
+  name: weightexp
+  run_name: exp5
+  description: "实验5"

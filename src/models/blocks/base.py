@@ -5,6 +5,7 @@ import math
 from timm.layers import trunc_normal_
 import torch.nn.functional as F
 
+
 class Upsample(nn.Module):
     """ nn.Upsample is deprecated """
 
@@ -53,38 +54,48 @@ class ChannelWeights(nn.Module):
         self.dim = dim
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
-        self.mlp = nn.Sequential(
-            nn.Linear(self.dim * 4, self.dim * 4 // reduction),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.dim * 4 // reduction, self.dim * 2),
-            nn.Sigmoid())
+        self.linear1 = nn.Linear(self.dim * 4, self.dim * 4 // reduction)
+        self.relu = nn.ReLU(inplace=True)
+        self.linear2 = nn.Linear(self.dim * 4 // reduction, self.dim * 2)
 
     def forward(self, x1, x2):
-        B, _,W, H = x1.shape
+        B, _, W, H = x1.shape
         x = torch.cat((x1, x2), dim=1)
         avg = self.avg_pool(x).view(B, self.dim * 2)
         max = self.max_pool(x).view(B, self.dim * 2)
         y = torch.cat((avg, max), dim=1)  # B 4C
-        y = self.mlp(y).view(B, self.dim * 2, 1)
+        y = self.linear1(y)
+        y = self.relu(y)
+        y = self.linear2(y)
+        y = torch.clamp(y, -10.0, 10.0)  # 🚨加这一步
+        y = torch.sigmoid(y)
+
+        y = y.view(B, self.dim * 2, 1)
         channel_weights = y.reshape(B, 2, self.dim, 1, 1).permute(1, 0, 2, 3, 4)  # 2 B C 1 1
         return channel_weights
+
 
 
 class SpatialWeights(nn.Module):
     def __init__(self, dim, reduction=1):
         super(SpatialWeights, self).__init__()
         self.dim = dim
-        self.mlp = nn.Sequential(
-            nn.Conv2d(self.dim * 2, self.dim // reduction, kernel_size=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(self.dim // reduction, 2, kernel_size=1),
-            nn.Sigmoid())
+        self.conv1 = nn.Conv2d(self.dim * 2, self.dim // reduction, kernel_size=1)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(self.dim // reduction, 2, kernel_size=1)
 
     def forward(self, x1, x2):
         B, _, H, W = x1.shape
         x = torch.cat((x1, x2), dim=1)  # B 2C H W
-        spatial_weights = self.mlp(x).reshape(B, 2, 1, H, W).permute(1, 0, 2, 3, 4)  # 2 B 1 H W
+        y = self.conv1(x)
+        y = self.relu(y)
+        y = self.conv2(y)
+        y = torch.clamp(y, -10.0, 10.0)  # 🚨防止sigmoid爆炸
+        y = torch.sigmoid(y)
+
+        spatial_weights = y.reshape(B, 2, 1, H, W).permute(1, 0, 2, 3, 4)  # 2 B 1 H W
         return spatial_weights
+
 
 
 class FeatureRectifyModule(nn.Module):
@@ -94,6 +105,7 @@ class FeatureRectifyModule(nn.Module):
         self.lambda_s = lambda_s
         self.channel_weights = ChannelWeights(dim=dim, reduction=reduction)
         self.spatial_weights = SpatialWeights(dim=dim, reduction=reduction)
+        self.apply(self._init_weights)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -270,3 +282,4 @@ class CABlock(nn.Module):
         # b,c,h,1    b,c,1,w
         out = x * s_h.expand_as(x) * s_w.expand_as(x)
         return out
+    

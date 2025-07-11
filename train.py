@@ -10,7 +10,7 @@ import torch.distributed as dist
 from omegaconf import DictConfig, OmegaConf
 import mlflow
 
-@hydra.main(config_path="configs", config_name="exp4", version_base="1.3")
+@hydra.main(config_path="configs", config_name="exp31", version_base="1.3")
 def main(cfg: DictConfig) -> None:
     # 如果开启DDP，则初始化分布式
     ddp_enabled = cfg.training.parameter.get("ddp", True)

@@ -41,7 +41,7 @@ def get_experiment_configs():
     # 获取所有yaml文件
     for config_file in experiment_dir.glob("*.yaml"):
         # 排除default.yaml和base.yaml
-        if config_file.stem not in ["default", "base","test","exp3"]:
+        if config_file.stem in ["exp32"]:
             experiments.append(config_file.stem)
     
     # 排序实验配置名

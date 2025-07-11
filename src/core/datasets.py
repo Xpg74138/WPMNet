@@ -13,7 +13,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class CustomDataset(Dataset):
-    def __init__(self, list_path, class_names, model_type,img_size=416, transform=None, cache_file=None,seg_aug=True):
+    def __init__(self, list_path, class_names, model_type,input_channel,img_size=416, transform=None, cache_file=None,seg_aug=True):
         self.img_size = img_size
         self.transform = transform
         self.class_names = class_names
@@ -22,6 +22,7 @@ class CustomDataset(Dataset):
         self.cache_data=[]
         self.cache_mask=[]
         self.seg_files=None
+        self.input_channel = input_channel
         # 读取文件路径
         with open(list_path, "r") as file:
             self.files = file.readlines()
@@ -107,9 +108,16 @@ class CustomDataset(Dataset):
                 augmented = self.transform(image=rgb_img, depth=depth_img)
             rgb_img = augmented['image']  # 形状变为 (C,H,W)
             depth_img = augmented['depth']  # 形状变为 (C,H,W)
-
-        # 合并 RGB 和深度图像，维度：[6, img_size, img_size]
-        image_rgbd = torch.cat([rgb_img, depth_img[0:1,:,:]], dim=0)
+        
+        if self.input_channel == 1:
+            # 如果输入通道为1，输入为depth图像
+            image_input = depth_img
+        elif self.input_channel == 3:   
+            # 如果输入通道为3，则确保 RGB 图像保持三通道
+            image_input = rgb_img
+        else:
+            # 合并 RGB 和深度图像，维度：[4, img_size, img_size]
+            image_input = torch.cat([rgb_img, depth_img[0:1,:,:]], dim=0)
 
         # 获取标签
         # 修改返回格式
@@ -126,7 +134,7 @@ class CustomDataset(Dataset):
                 'regression': torch.tensor([self.labels_weight[index]], dtype=torch.float32)
             }
 
-        return image_rgbd, targets
+        return image_input, targets
 
     def __len__(self):
         return len(self.files)

@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
-from .conv_blocks import ConvNextBlock,ConvNextStem,Downsample
+from .conv_blocks import ConvNextBlock,ConvNextStem,Downsample,ResNetStem,ResNetBottleneckDown,ResNetBottleneck,Conv
 from .transformer_blocks import BasicLayer,PatchEmbed,Mlp,window_partition,window_reverse,PatchMerging
 from timm.layers import trunc_normal_,DropPath, to_2tuple
 import torch.utils.checkpoint as checkpoint
+import torch.nn.functional as F
 
 ### dual_Convnext
 class ConvNextStem_dual(nn.Module):
@@ -516,3 +517,152 @@ class SwinTransformerBlock_dual_MY(nn.Module):
     def forward(self,x):
         x_rgb,x_depth = self.m(x)
         return x_rgb,x_depth
+    
+# dual resnet blocks
+class ResNetStem_dual(nn.Module):
+    def __init__(self, c1, c2, k=7, s=2):
+        super().__init__()
+        self.rgb=ResNetStem(c1-1, c2, k=k, s=s)
+        self.depth=ResNetStem(c1-3, c2, k=k, s=s)
+
+    def forward(self,x):
+        x_rgb=x[:,0:3,:,:]
+        x_depth=x[:,3:,:,:]
+        x_rgb=self.rgb(x_rgb)
+        x_depth=self.depth(x_depth)
+        return x_rgb,x_depth
+
+class ResNetBottleneck_dual(nn.Module):
+    def __init__(self,c1,c2):
+        super().__init__()
+        self.rgb = ResNetBottleneck(c1=c1,c2=c2)
+        self.depth = ResNetBottleneck(c1=c1,c2=c2)
+    
+    def forward(self,x):
+        x_rgb = x[0]
+        x_depth = x[1]
+        x_rgb = self.rgb(x_rgb)
+        x_depth = self.depth(x_depth)
+        return x_rgb, x_depth
+
+class ResNetBottleneckDown_dual(nn.Module):
+    def __init__(self,c1, c2, s=2):
+        super().__init__()
+        self.rgb = ResNetBottleneckDown(c1, c2, s=s)
+        self.depth = ResNetBottleneckDown(c1, c2, s=s)
+
+    def forward(self,x):
+        x_rgb = x[0]
+        x_depth = x[1]
+        x_rgb = self.rgb(x_rgb)
+        x_depth = self.depth(x_depth)
+        return x_rgb, x_depth
+    
+class AttentionFusion(nn.Module):
+    def __init__(self, in_channels=512, mid_channels=128, out_channels=384):
+        super(AttentionFusion, self).__init__()
+
+        # 通道调整
+        self.p3_proj = nn.Sequential(
+                        nn.Conv2d(in_channels*8, mid_channels, kernel_size=1),
+                        nn.GroupNorm(num_groups=4, num_channels=mid_channels)
+                    ) 
+        self.p4_proj = nn.Sequential(
+                        nn.Conv2d(in_channels*4, mid_channels, kernel_size=1),
+                        nn.GroupNorm(num_groups=4, num_channels=mid_channels)
+                    ) 
+        self.p5_proj = nn.Sequential(
+                        nn.Conv2d(in_channels*2, mid_channels, kernel_size=1),
+                       nn.GroupNorm(num_groups=4, num_channels=mid_channels)
+                    ) 
+
+        # 通道注意力（SE风格）
+        self.channel_att = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(mid_channels * 3, mid_channels),
+            nn.ReLU(inplace=True),
+            nn.Linear(mid_channels, mid_channels * 3),
+            nn.Sigmoid()
+        )
+
+        # 空间注意力（CBAM风格）
+        self.spatial_att = nn.Sequential(
+            nn.Conv2d(mid_channels * 3, 1, kernel_size=7, padding=3),
+            nn.Sigmoid()
+        )
+
+        # 融合输出卷积
+        self.fuse = nn.Sequential(
+            nn.Conv2d(mid_channels * 3, out_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        p3=torch.cat([x[0][0],x[0][1]],dim=1)
+        p4=torch.cat([x[1][0],x[1][1]],dim=1)
+        p5=torch.cat([x[2][0],x[2][1]],dim=1)
+        # 统一空间尺寸为 p4 的尺寸
+        target_size = p3.shape[2:]
+
+        p5 = F.interpolate(p5, size=target_size, mode='nearest')  # 上采样 ×2
+        p4 = F.interpolate(p4, size=target_size, mode='nearest')  # 下采样 ×0.5
+
+        # 通道统一
+        p3 = self.p3_proj(p3)
+        p4 = self.p4_proj(p4)
+        p5 = self.p5_proj(p5)
+
+        # 拼接并加注意力
+        feat = torch.cat([p3, p4, p5], dim=1)
+
+        c_att = self.channel_att(feat).view(feat.size(0), -1, 1, 1)
+        feat = feat * c_att
+
+        s_att = self.spatial_att(feat)
+        feat = feat * s_att
+
+        # 融合卷积
+        out = self.fuse(feat)
+        return out
+    
+class SelfAttentionFusion(nn.Module):
+    def __init__(self, in_channels=512, mid_channels=128, out_channels=384, num_heads=4):
+        super().__init__()
+        self.p3_proj = nn.Conv2d(in_channels * 8, mid_channels, kernel_size=1)
+        self.p4_proj = nn.Conv2d(in_channels * 4, mid_channels, kernel_size=1)
+        self.p5_proj = nn.Conv2d(in_channels * 2, mid_channels, kernel_size=1)
+
+        self.norm = nn.LayerNorm(mid_channels*3)
+        self.attn = nn.MultiheadAttention(embed_dim=mid_channels*3, num_heads=num_heads, batch_first=True)
+
+        self.fuse = nn.Sequential(
+            nn.Conv2d(mid_channels*3, out_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        p3 = torch.cat([x[0][0], x[0][1]], dim=1)
+        p4 = torch.cat([x[1][0], x[1][1]], dim=1)
+        p5 = torch.cat([x[2][0], x[2][1]], dim=1)
+
+        target_size = p3.shape[2:]
+        p4 = F.interpolate(p4, size=target_size, mode='nearest')
+        p5 = F.interpolate(p5, size=target_size, mode='nearest')
+
+        p3 = self.p3_proj(p3)  # B, C, 7, 7
+        p4 = self.p4_proj(p4)
+        p5 = self.p5_proj(p5)
+
+        # 拼接为 batch × seq_len × embed_dim
+        feat = torch.cat([p3, p4, p5], dim=1)  # B, 3C, 7, 7
+        B, C, H, W = feat.shape
+        feat = feat.view(B, C, H*W).permute(0, 2, 1)  # [B, 49, C]
+
+        feat = self.norm(feat)
+        feat, _ = self.attn(feat, feat, feat)
+        feat = feat.permute(0, 2, 1).view(B, C, H, W)
+
+        return self.fuse(feat)

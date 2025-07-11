@@ -1,0 +1,30 @@
+_target_: src.core.builder.XModel
+task: ${training.task.type}
+type: weight_posture
+
+Model:
+  input_channel: 3
+  Backbone:
+    # [from, number, module, args]
+    [ # stage0
+      [-1, 1, ResNetStem, [64, 7, 2]],                  # Stage 0
+
+      [-1, 1, ResNetBottleneckDown, [ 256, 1]],       # Stage 1 - BTN K1, no downsampling
+      [-1, 2, ResNetBottleneck, [256]],                  # BTN K2 ×2
+
+      [-1, 1, ResNetBottleneckDown, [ 512, 2]],     # Stage 2 - BTN K1, downsample
+      [-1, 3, ResNetBottleneck, [512]],                 # BTN K2 ×3
+
+      [-1, 1, ResNetBottleneckDown, [ 1024, 2]],     # Stage 3 - BTN K1, downsample
+      [-1, 5, ResNetBottleneck, [1024]],                 # BTN K2 ×5
+
+      [-1, 1, ResNetBottleneckDown, [ 2048, 2]],    # Stage 4 - BTN K1, downsample
+      [-1, 2, ResNetBottleneck, [2048]]                  # BTN K2 ×2
+    ]
+
+  Head:
+    [
+      [-1, 1, DecoupleHead,[]], # Detect(P3, P4, P5)27
+    ]
+
+  weights: ""

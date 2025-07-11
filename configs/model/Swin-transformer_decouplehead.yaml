@@ -1,0 +1,29 @@
+_target_: src.core.builder.XModel
+task: ${training.task.type}
+type: weight_posture
+
+Model:
+  input_channel: 4
+  Backbone:
+    # [from, number, module, args]
+    [ # stage0
+    [-1, 1, PatchEmbed, [96, 4, 224]],                 # 输入图像分块嵌入
+    [-1, 2, SwinTransformerBlock, [96,[56, 56], 3, 7]],  # stage1
+    [-1, 1, PatchMerging, [192,[56, 56]]],                # downsample1
+
+    [-1, 2, SwinTransformerBlock, [192,[28, 28], 6, 7]], # stage2
+    [-1, 1, PatchMerging, [384,[28, 28]]],               # downsample2
+
+    [-1, 6, SwinTransformerBlock, [384,[14, 14], 12, 7]], # stage3
+    [-1, 1, PatchMerging, [768,[14, 14]]],               # downsample3
+
+    [-1, 2, SwinTransformerBlock, [768,[7, 7], 24, 7]],  # stage4
+    [-1, 1, ReshapeToNCHW, [768,7, 7]]
+    ]
+
+  Head:
+    [
+      [-1, 1, DecoupleHead,[]], # Detect(P3, P4, P5)27
+    ]
+
+  weights: ""

@@ -13,9 +13,9 @@ from albumentations.pytorch import ToTensorV2
 import hydra
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
+from torch.optim.lr_scheduler import LinearLR, SequentialLR
 
 # 自定义模块导入
-
 from .builder import XModel
 from .datasets import CustomDataset  # 数据集类
 from .loss import PWLoss, PWAPLoss  # 损失函数
@@ -140,7 +140,8 @@ class GenericTrainer:
             cfg.model.type,
             img_size=cfg.data.img_size,
             transform=transform,
-            cache_file=cfg.data.train.cache
+            cache_file=cfg.data.train.cache,
+            input_channel=cfg.model.Model.input_channel
         )
         
         val_set = CustomDataset(
@@ -149,7 +150,8 @@ class GenericTrainer:
             cfg.model.type,
             img_size=cfg.data.img_size,
             transform=val_transform,
-            cache_file=cfg.data.val.cache
+            cache_file=cfg.data.val.cache,
+            input_channel=cfg.model.Model.input_channel
         )
 
         # 分布式采样器
@@ -270,24 +272,47 @@ class GenericTrainer:
         )
         return transform_pipeline,transform_pipeline_val
 
+    from torch.optim.lr_scheduler import LinearLR, SequentialLR
+
     def _build_scheduler(self, sched_cfg: DictConfig):
+        # 不用 scheduler 的情况保持不变
         if sched_cfg is None or not hasattr(sched_cfg, '_target_') or sched_cfg._target_.lower() == 'none':
             print("No learning rate scheduler will be used.")
             return None
-        
+
+        # 1) 创建主调度器
         scheduler_class_name = sched_cfg._target_.split('.')[-1]
         scheduler_class = getattr(optim.lr_scheduler, scheduler_class_name)
-        
         sig = inspect.signature(scheduler_class)
-        params = sig.parameters.keys()
-        valid_params = [p for p in params if p not in ['self', 'optimizer']]
-        
-        kwargs = {}
-        for param in valid_params:
-            if hasattr(sched_cfg, param):
-                kwargs[param] = getattr(sched_cfg, param)
-        
-        return scheduler_class(self.optimizer, **kwargs)
+        main_kwargs = {
+            k: getattr(sched_cfg, k)
+            for k in sig.parameters.keys()
+            if k not in ('self', 'optimizer') and hasattr(sched_cfg, k)
+        }
+        main_scheduler = scheduler_class(self.optimizer, **main_kwargs)
+
+        # 2) 如果没有 warmup，直接返回主调度器
+        if not hasattr(sched_cfg, 'warmup_iters'):
+            return main_scheduler
+
+        # 3) 创建 warmup 调度器（线性从 warmup_start_factor 到 1.0）
+        warmup_iters = int(sched_cfg.warmup_iters)
+        start_factor = float(getattr(sched_cfg, 'warmup_start_factor', 0.01))
+        warmup_scheduler = LinearLR(
+            self.optimizer,
+            start_factor=start_factor,
+            end_factor=1.0,
+            total_iters=warmup_iters
+        )
+
+        # 4) 串联成一个 SequentialLR，milestones 在 warmup_iters
+        scheduler = SequentialLR(
+            self.optimizer,
+            schedulers=[warmup_scheduler, main_scheduler],
+            milestones=[warmup_iters]
+        )
+        return scheduler
+
 
     def _build_criterion(self, task_cfg: DictConfig) -> nn.Module:
         if hasattr(task_cfg, 'loss') and hasattr(task_cfg.loss, '_target_'):
@@ -331,7 +356,7 @@ class GenericTrainer:
                 )
                 for k, v in targets.items()
             }
-
+            #with torch.autograd.set_detect_anomaly(True):
             with torch.amp.autocast(device_type='cuda', enabled=self.use_amp):
                 outputs = self.model(images)
                 loss, loss_items = self.criterion(outputs, targets)
@@ -339,10 +364,13 @@ class GenericTrainer:
             self.optimizer.zero_grad()
             if self.use_amp:
                 self.scaler.scale(loss).backward()
+                #gradient clipping
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
             if len(loss_items)>2:
                 total_cls_loss += loss_items[0].item()
@@ -509,6 +537,8 @@ class GenericTrainer:
                         if part2 in val_metrics and part3 in val_metrics[part2]:
                             current_metric = val_metrics[part2][part3]
                     
+                    current_f1=val_metrics["classification"]["f1"]
+
                     if current_metric is not None:
                         is_best = current_metric < best_metric
                         if is_best:
@@ -516,6 +546,22 @@ class GenericTrainer:
                             self._save_checkpoint(epoch, "best_model.pth")
                             mlflow.log_metric("best_epoch", epoch, step=epoch)
                             mlflow.log_metric("best_metric", best_metric, step=epoch)
+                    try:
+                        if self.cfg.snapshot:
+                            if  self.cfg.snapshot==4 and current_f1>=0.8 and current_f1<0.85:
+                                self._save_checkpoint(epoch, f"model_{0.8}.pth")
+                                self.cfg.snapshot=self.cfg.snapshot-1
+                            elif  self.cfg.snapshot==3 and current_f1>=0.85 and current_f1<0.90:
+                                self._save_checkpoint(epoch, f"model_{0.85}.pth")
+                                self.cfg.snapshot=self.cfg.snapshot-1
+                            elif  self.cfg.snapshot==2 and current_f1>=0.90 and current_f1<0.95:
+                                self._save_checkpoint(epoch, f"model_{0.90}.pth")
+                                self.cfg.snapshot=self.cfg.snapshot-1
+                            elif  self.cfg.snapshot==1 and current_f1>=0.95 and current_f1<1.0:
+                                self._save_checkpoint(epoch, f"model_{0.95}.pth")
+                                self.cfg.snapshot=self.cfg.snapshot-1
+                    except:
+                        pass
                     
                     self._save_checkpoint(epoch, "latest_model.pth")
 
