@@ -30,7 +30,7 @@ Model:
 
   Head:
     [
-      [-1, 1, CoupleHead,[]], # Detect(P3, P4, P5)27
+      [-1, 1, CoupleHead,[2048]], # Detect(P3, P4, P5)27
     ]
 
   weights: ""

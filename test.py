@@ -28,7 +28,7 @@ def test(cfg: DictConfig):
     # 2. 加载模型参数
     checkpoint_path = cfg.testing.checkpoint
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state"])
+    model.load_state_dict(checkpoint["model_state"],strict=True)
 
     # 3. 构建测试数据集和 DataLoader
     transform = A.Compose([

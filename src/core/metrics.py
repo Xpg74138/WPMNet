@@ -90,16 +90,37 @@ class RegressionMetrics(nn.Module):
         """RMSE = sqrt(MSE)"""
         return torch.sqrt(self.mean_squared_error(y_pred, y_true))
 
-    def r_squared(self,
-                 y_pred: torch.Tensor,
-                 y_true: torch.Tensor,
-                 ) -> torch.Tensor:
-        """R² = 1 - SS_res / SS_tot"""
-        ss_res = torch.sum((y_true - y_pred)**2)
-        ss_tot = torch.sum((y_true - torch.mean(y_true))**2)
-        #print(f"SS_res: {ss_res.item()}, SS_tot: {ss_tot.item()}")
+    # def r_squared(self,
+    #              y_pred: torch.Tensor,
+    #              y_true: torch.Tensor,
+    #              ) -> torch.Tensor:
+    #     """R² = 1 - SS_res / SS_tot"""
+    #     ss_res = torch.sum((y_true - y_pred)**2)
+    #     ss_tot = torch.sum((y_true - torch.mean(y_true))**2)
+    #     #print(f"SS_res: {ss_res.item()}, SS_tot: {ss_tot.item()}")
 
-        return 1 - self._safe_divide(ss_res, ss_tot)
+    #     return 1 - self._safe_divide(ss_res, ss_tot)
+    
+    def r_squared(self,
+              y_pred: torch.Tensor,
+              y_true: torch.Tensor) -> torch.Tensor:
+        """R² = (Pearson correlation coefficient)²"""
+        # 去中心化
+        y_true_centered = y_true - torch.mean(y_true)
+        y_pred_centered = y_pred - torch.mean(y_pred)
+
+        # 协方差
+        cov = torch.sum(y_true_centered * y_pred_centered)
+
+        # 标准差
+        std_true = torch.sqrt(torch.sum(y_true_centered ** 2))
+        std_pred = torch.sqrt(torch.sum(y_pred_centered ** 2))
+
+        # 皮尔逊相关系数
+        corr = self._safe_divide(cov, std_true * std_pred)
+
+        return corr ** 2
+
 
     def mean_absolute_percentage_error(self,
                                       y_pred: torch.Tensor,

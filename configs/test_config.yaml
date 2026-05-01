@@ -1,10 +1,10 @@
 # 引用默认配置
 defaults:
-  - exp31
+  - exp1
   - _self_  # 确保当前配置覆盖默认值
 
 testing:
-  checkpoint: "/home/xpg/mlartifacts/941656278979793273/d5c8290ea1be4155b1c661d0fa63dc83/artifacts/best_model.pth"
+  checkpoint: "/home/xpg/mlartifacts/968484430245206079/8f79480abcfb4305954a91f552527602/artifacts/best_model.pth"
   metrics:
     regression:
       - mae
