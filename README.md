@@ -54,10 +54,7 @@ Suggested local layout:
 
 ```text
 weights/
-├── wpmnet_best_model.pth
-├── swrh_best_model.pth
-├── c_wpmh_best_model.pth
-└── d_wpmh_best_model.pth
+└── best_model.pth
 ```
 
 When evaluating a released checkpoint, set the checkpoint path in:
