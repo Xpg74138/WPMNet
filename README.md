@@ -189,36 +189,6 @@ Important notes:
 - Reported regression metrics include MAE, RMSE, R2, and MAPE.
 - Reported posture metrics include accuracy and macro-F1.
 
-## Public Configuration Files
-
-Only the public best-model config and test config are included in the GitHub release:
-
-```text
-configs/best.yaml          # Self-contained WPMNet configuration
-configs/test_config.yaml   # Evaluation configuration
-```
-
-## Metrics
-
-Regression metrics:
-
-- MAE
-- RMSE
-- R2, coefficient of determination: `1 - SS_res / SS_tot`
-- MAPE
-
-Posture classification metrics:
-
-- Accuracy
-- Macro-F1
-
-## Reproducibility Notes
-
-- Keep the original `train/val/test` split unchanged.
-- Do not use the validation set as the test set.
-- Record the config file, checkpoint path, random seed, code version, and hardware for each experiment.
-- When testing a checkpoint, ensure `configs/test_config.yaml` inherits the same experiment config used during training.
-- For multi-seed experiments, use the same split and only change the random seed.
 
 ## Citation
 
@@ -233,9 +203,6 @@ If this repository is useful for your research, please cite:
 }
 ```
 
-## License
-
-TODO: add license information before public release.
 
 ## Contact
 
