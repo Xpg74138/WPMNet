@@ -1,12 +1,16 @@
 /outputs/
 /.idea/
 *.pyc
+*.pyo
+*.pyd
+__pycache__/
+.pytest_cache/
+.mypy_cache/
 /mlruns/
 .*
 /literature_baselines/
 
 /revision_outputs/
-__pycache__/*
 
 # Keep internal experiment configs private in the public repository.
 /configs/*
