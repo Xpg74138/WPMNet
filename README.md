@@ -1,18 +1,5 @@
 # WPMNet: Weight-posture Joint Modeling for Pig Body Weight Estimation
 
-This repository contains the code for the paper:
-
-**Weight-posture joint modeling for body weight estimation of unconstrained pigs**
-
-The project trains and evaluates deep learning models for pig body weight estimation from RGB-D images. It supports single-task weight regression and joint weight-posture learning, including SWRH, C-WPMH, D-WPMH, and WPMNet-style RGB-D fusion models.
-
-> Data and trained weights will be released separately. Placeholder links are kept below.
-
-## News
-
-- **Data download:** TODO: add public dataset URL.
-- **Pretrained weights:** TODO: add release / cloud storage URL.
-- **Paper / citation:** TODO: add DOI, arXiv, or journal link after publication.
 
 ## Repository Structure
 
@@ -51,79 +38,32 @@ If you need to install PyTorch manually for a specific CUDA version, install PyT
 pip install -r requirements.txt
 ```
 
-## Data Preparation
 
-The dataset is expected to be organized with fixed train/validation/test split files. The split must not be randomly regenerated if you want to reproduce the reported results.
-
-Recommended layout:
-
-```text
-data/
-└── 700x700/
-    ├── train.txt
-    ├── val.txt
-    ├── test.txt
-    ├── train/
-    │   ├── rgb/
-    │   └── depth/
-    ├── val/
-    │   ├── rgb/
-    │   └── depth/
-    └── test/
-        ├── rgb/
-        └── depth/
-```
-
-Each line in `train.txt`, `val.txt`, and `test.txt` should follow:
-
-```text
-/path/to/rgb_image.jpg,/path/to/depth_image.png,weight_kg,posture_name
-```
-
-Example:
-
-```text
-data/700x700/train/rgb/000001.jpg,data/700x700/train/depth/000001.png,82.4,standing
-```
-
-Supported posture names are defined in the data config:
-
-```yaml
-class_names:
-  - standing
-  - lyingonstomach
-  - lyingonside
-```
 
 After downloading the dataset, update the paths in:
 
 ```text
-configs/data/pig_weight_truedepth.yaml
+configs/best.yaml
 ```
 
-For example:
-
-```yaml
-train:
-  path: data/700x700/train.txt
-val:
-  path: data/700x700/val.txt
-test:
-  path: data/700x700/test.txt
-```
 
 ## Pretrained Weights
 
-Pretrained weights will be released later.
+Pretrained weights are available from Baidu Netdisk:
+
+```text
+Link: https://pan.baidu.com/s/1dyg9hPV2zK6EhUsFtXA3hg?pwd=jc59
+Extraction code: jc59
+```
 
 Suggested local layout:
 
 ```text
 weights/
-├── wpmnet_best_model.pth        # TODO: add download link
-├── swrh_best_model.pth          # TODO: add download link
-├── c_wpmh_best_model.pth        # TODO: add download link
-└── d_wpmh_best_model.pth        # TODO: add download link
+├── wpmnet_best_model.pth
+├── swrh_best_model.pth
+├── c_wpmh_best_model.pth
+└── d_wpmh_best_model.pth
 ```
 
 When evaluating a released checkpoint, set the checkpoint path in:
@@ -164,23 +104,23 @@ http://127.0.0.1:2000
 If you use a different MLflow URI, update:
 
 ```text
-configs/default.yaml
+configs/best.yaml
 ```
 
 ## Training
 
-Training uses Hydra configs. The default training entry currently uses `configs/exp31.yaml`.
+Training uses Hydra configs. The public release exposes the best model config as `configs/best.yaml`.
 
 For one GPU:
 
 ```bash
-torchrun --nproc_per_node=1 train.py --config-path=configs --config-name=exp31
+torchrun --nproc_per_node=1 train.py --config-path=configs --config-name=best
 ```
 
 For two GPUs:
 
 ```bash
-torchrun --nproc_per_node=2 train.py --config-path=configs --config-name=exp31
+torchrun --nproc_per_node=2 train.py --config-path=configs --config-name=best
 ```
 
 You can override training parameters from the command line:
@@ -188,7 +128,7 @@ You can override training parameters from the command line:
 ```bash
 torchrun --nproc_per_node=2 train.py \
   --config-path=configs \
-  --config-name=exp31 \
+  --config-name=best \
   training.parameter.epochs=100 \
   training.parameter.batch_size=64 \
   optimizer.lr=0.00005
@@ -199,7 +139,7 @@ Useful visualization/logging overrides for faster training:
 ```bash
 torchrun --nproc_per_node=2 train.py \
   --config-path=configs \
-  --config-name=exp31 \
+  --config-name=best \
   visualization.log_images=false \
   visualization.log_model_graph=false \
   visualization.visualization_interval=0 \
@@ -207,22 +147,6 @@ torchrun --nproc_per_node=2 train.py \
 ```
 
 Checkpoints are saved by the trainer as MLflow artifacts, depending on the active run configuration.
-
-## Batch Experiments
-
-`run_experiments.py` runs selected experiment configs sequentially and keeps printing logs.
-
-```bash
-NPROC_PER_NODE=2 TRAIN_EPOCHS=30 SCHEDULER_T_MAX=100 python run_experiments.py
-```
-
-To change which experiments are run, edit:
-
-```text
-run_experiments.py
-```
-
-especially `get_experiment_configs()`.
 
 ## Testing
 
@@ -236,7 +160,7 @@ Example:
 
 ```yaml
 defaults:
-  - exp31
+  - best
   - _self_
 
 testing:
@@ -265,28 +189,13 @@ Important notes:
 - Reported regression metrics include MAE, RMSE, R2, and MAPE.
 - Reported posture metrics include accuracy and macro-F1.
 
-## Main Configuration Files
+## Public Configuration Files
 
-Common experiment configs:
-
-```text
-configs/exp31.yaml    # WPMNet-style RGB-D fusion model
-configs/exp32.yaml    # Coupled-head variant
-configs/exp1.yaml     # Baseline config example
-configs/exp5.yaml     # C-WPMH-style config example
-configs/exp9.yaml     # D-WPMH-style config example
-```
-
-Model configs are under:
+Only the public best-model config and test config are included in the GitHub release:
 
 ```text
-configs/model/
-```
-
-Data configs are under:
-
-```text
-configs/data/
+configs/best.yaml          # Self-contained WPMNet configuration
+configs/test_config.yaml   # Evaluation configuration
 ```
 
 ## Metrics
@@ -330,4 +239,4 @@ TODO: add license information before public release.
 
 ## Contact
 
-TODO: add maintainer email or project page.
+For questions, please contact: B20243090880@cau.edu.cn.

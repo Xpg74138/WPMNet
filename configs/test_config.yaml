@@ -1,10 +1,10 @@
 # 引用默认配置
 defaults:
-  - exp32
+  - best
   - _self_  # 确保当前配置覆盖默认值
 
 testing:
-  checkpoint: "/home/xpg/mlartifacts/941656278979793273/0ecdca9005d247bd9fa4df38a39b8570/artifacts/best_model.pth"
+  checkpoint: weights/wpmnet_best_model.pth
   metrics:
     regression:
       - mae
