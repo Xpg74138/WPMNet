@@ -5,13 +5,8 @@
 
 ```text
 .
-├── configs/                  # Hydra configs for data, models, optimizer, scheduler, experiments
-│   ├── data/                 # Dataset split and loader configs
-│   ├── model/                # Backbone/head/fusion architecture configs
-│   ├── training/             # Training task and metric configs
-│   ├── optimizer/            # Optimizer configs
-│   └── scheduler/            # LR scheduler configs
-├── src/
+├── configs/                  # Exp configs 
+├── src/  
 │   ├── core/                 # Trainer, dataset, metrics, loss, model builder
 │   ├── models/               # Backbones, fusion blocks, heads
 │   └── utils/                # Label normalization and visualization helpers
