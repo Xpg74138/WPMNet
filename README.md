@@ -38,7 +38,8 @@ If you need to install PyTorch manually for a specific CUDA version, install PyT
 pip install -r requirements.txt
 ```
 
-
+## Dataset
+The dataset used in this study will be made publicly available after publication.
 
 After downloading the dataset, update the paths in:
 
@@ -51,10 +52,8 @@ configs/best.yaml
 
 Pretrained weights are available from Baidu Netdisk:
 
-```text
 Link: https://pan.baidu.com/s/1dyg9hPV2zK6EhUsFtXA3hg?pwd=jc59
 Extraction code: jc59
-```
 
 Suggested local layout:
 
