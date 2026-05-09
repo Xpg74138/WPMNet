@@ -2,14 +2,38 @@ import os
 import subprocess
 from pathlib import Path
 
+NPROC_PER_NODE = int(os.environ.get("NPROC_PER_NODE", "2"))
+TRAIN_EPOCHS = os.environ.get("TRAIN_EPOCHS", "30").strip()
+SCHEDULER_T_MAX = os.environ.get("SCHEDULER_T_MAX", "100").strip()
+
+
+def hydra_overrides() -> list[str]:
+    """Runtime overrides for shorter training without compressing the LR schedule."""
+    overrides = []
+    if TRAIN_EPOCHS:
+        overrides.append(f"training.parameter.epochs={TRAIN_EPOCHS}")
+    if SCHEDULER_T_MAX:
+        overrides.append(f"scheduler.T_max={SCHEDULER_T_MAX}")
+    return overrides
+
+
 def run_experiment(exp_name: str):
     """运行单个实验配置（会自动继承并覆盖默认配置）"""
-    # 直接使用配置文件路径覆盖
-    cmd = f"torchrun --nproc_per_node=2 train.py --config-path=configs --config-name={exp_name}"
+    cmd = [
+        "torchrun",
+        f"--nproc_per_node={NPROC_PER_NODE}",
+        "train.py",
+        "--config-path=configs",
+        f"--config-name={exp_name}",
+        *hydra_overrides(),
+    ]
     print(f"\n开始运行实验: {exp_name}")
+    print("命令:", " ".join(cmd))
+    if os.environ.get("DRY_RUN", "0") == "1":
+        return
     
     process = subprocess.Popen(
-        cmd.split(),
+        cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         universal_newlines=True
@@ -56,6 +80,8 @@ def main():
         print("未找到任何实验配置，请确保configs目录下包含有效的配置文件")
         return
     print(f"找到以下实验配置: {', '.join(experiments)}")
+    print(f"训练轮数: {TRAIN_EPOCHS or 'config default'}")
+    print(f"Scheduler T_max: {SCHEDULER_T_MAX or 'config default'}")
     for exp in experiments:
         run_experiment(exp)
 

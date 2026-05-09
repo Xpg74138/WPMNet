@@ -35,7 +35,7 @@ class SWRHead(nn.Module):
     def forward(self, x):
         x = self.merge(x)
         reg_out = self.reg(x)  # [B, 1]
-        reg_out = torch.sigmoid(reg_out)
+        #reg_out = torch.sigmoid(reg_out)
 
         return torch.cat([reg_out], 1)  # 把分类和回归结果按channel维度，即dim=1拼接
 
@@ -70,9 +70,9 @@ class DecoupleHead(nn.Module):
 
         cls_out = self.cls(x)  # [B, nc]
         reg_out = self.reg(x)  # [B, 1]
-        reg_out = torch.sigmoid(reg_out)
+        #reg_out = torch.sigmoid(reg_out)
 
-        return torch.cat([cls_out,reg_out], 1)  # 把分类和回归结果按channel维度，即dim=1拼接
+        return torch.cat([reg_out, cls_out], 1)  # 把分类和回归结果按channel维度，即dim=1拼接
 
 
 #结合分类和体重回归，理论是姿态会影响体重预测，但是训练会更难
@@ -111,9 +111,9 @@ class CoupleHead(nn.Module):
         # 回归分支
         reg_input = features + original_input
         reg_out = self.reg(reg_input)
-        reg_out = torch.sigmoid(reg_out)
+        #reg_out = torch.sigmoid(reg_out)
 
-        return torch.cat([cls_out,reg_out], 1)
+        return torch.cat([reg_out, cls_out], 1)
 
 
 

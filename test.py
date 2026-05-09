@@ -16,6 +16,15 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader
 
+def load_weights_from_split(list_path):
+    weights = []
+    with open(list_path, "r") as f:
+        for line in f:
+            parts = line.strip().split(",")
+            if len(parts) >= 3:
+                weights.append(float(parts[2]))
+    return weights
+
 @hydra.main(config_path="configs", config_name="test_config.yaml")
 def test(cfg: DictConfig):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -60,7 +69,8 @@ def test(cfg: DictConfig):
     )
 
     # 4. 初始化归一化器和评估指标
-    data_normalizer = DataNormalizer(test_set.labels_weight)
+    train_weights = load_weights_from_split(cfg.data.train.path)
+    data_normalizer = DataNormalizer(train_weights)
     metrics_calculator = MetricsCalculator(cfg.testing.metrics)
 
     # 5. 模型推理与评估
@@ -100,7 +110,7 @@ def test(cfg: DictConfig):
         'True Label': trueL,
         'Predicted Label': preL
     })
-    df.to_excel('/mnt/bc8f2e4d-b1c3-4772-8cbb-68d7a51e2523/xpg/TrainFramework/prediction_results.xlsx', index=False)
+    #df.to_excel('/mnt/bc8f2e4d-b1c3-4772-8cbb-68d7a51e2523/xpg/TrainFramework/prediction_results.xlsx', index=False)
     metrics = metrics_calculator.compute_all(predictions, ground_truth)
 
     print("\n=== Test Metrics ===")

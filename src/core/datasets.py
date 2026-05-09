@@ -34,7 +34,7 @@ class CustomDataset(Dataset):
             rgb_img_files, depth_img_files, labels_weight,_ = zip(
                 *(obj.split(',') for obj in tqdm(self.files))
             )
-        if any(isinstance(t, RandomBackgroundReplacement) for t in self.transform.transforms):
+        if self.transform is not None and any(isinstance(t, RandomBackgroundReplacement) for t in self.transform.transforms):
             seg_file=list_path.replace(".txt","_seg.txt")
             with open(seg_file, "r") as file:
                 seg_files = file.readlines()
@@ -138,4 +138,3 @@ class CustomDataset(Dataset):
 
     def __len__(self):
         return len(self.files)
-

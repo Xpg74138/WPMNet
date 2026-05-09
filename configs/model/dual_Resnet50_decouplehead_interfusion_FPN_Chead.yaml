@@ -30,7 +30,7 @@ Model:
   Head:
     [
       [[12, 9, 6], 1, AttentionFusion, [512, 128]],  # 融合模块
-      [-1, 1, DecoupleHead, [384]],
+      [-1, 1, CoupleHead, [384]],
     ]
 
   weights: ""

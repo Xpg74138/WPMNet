@@ -73,7 +73,10 @@ class ModelBuilder(nn.Module):
         
         # 特殊模块处理逻辑
         if module in multipleinput_blocks.values():
-            c2 = sum(self.channels[x] for x in f)
+            if module.__name__ in {"AttentionFusion", "SelfAttentionFusion"}:
+                c2 = args[2] if len(args) >= 3 else 384
+            else:
+                c2 = sum(self.channels[x] for x in f)
         elif module is nn.BatchNorm2d:
             # BN层参数处理
             c2 = self.channels[f]
